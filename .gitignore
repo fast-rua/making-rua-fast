@@ -1,0 +1,9 @@
+scratch/
+.venv/
+__pycache__/
+*.pyc
+runs/
+MUJOCO_LOG.TXT
+*.egg-info/
+.cache/
+.robot/

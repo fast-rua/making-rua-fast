@@ -1,0 +1,33 @@
+# Task
+
+{instruction}
+
+# Environment
+
+- {world}
+- **Working directory:** `{workspace}`, a git repository; this file is `{workspace}/AGENTS.md`. Only `{workspace}`
+  and `/tmp` are writable.
+- **Pythons** (nothing can be installed; `PYTHONPATH` is `{code}`, so each can `import robot`[[ and `import vision`]]):
+  - `{robot_python}` (first on `PATH`, as `python`): numpy, scipy, mujoco, mink, ruckig, warp, i2rt, pillow.
+  - `{perception_python}`: numpy, scipy, opencv, torch, jax, matplotlib, transformers, pillow.
+  - `{libs_python}`: numpy, scipy, cuRobo, PyRoKi (with jax, jaxls, yourdfpy), trimesh, torch, warp, matplotlib,
+    pillow.
+  - None of them has Pinocchio or Open3D.
+- {gpu}
+- **Memory:** a process that uses more than {mem_process_gb} GB of RAM is killed at once, and so is the largest of
+  yours when all of them together use more than {mem_total_gb} GB.{commands}
+- **No internet:** your programs can connect only to the robot socket[[ and the vision socket]]. No other network is
+  reachable, whatever the sandbox settings say.
+- **The robot:** `import robot; r = robot.connect()` connects through `$ROBOT_ADDR` (`{robot_addr}`). Every file
+  `r.description` names (URDFs, the MJCF and their meshes) is readable.
+[[- **Vision:** `import vision; v = vision.connect()` connects through `$VISION_ADDR` (`{vision_addr}`) to perception
+  models running on a GPU in another process. Its manual is `{code}/docs/VISION.md`.
+]]- **Code:** `{code}`, read-only: `robot/` (the robot client), `robotd/core/` (the driver's control core)[[,
+  `vision/` (the vision client)]] and `docs/` (`MANUAL.md` is the robot manual, copied below[[; `VISION.md` the vision
+  manual]]).{examples}
+- **Time:** {wall_h} hours of wall-clock time from the start of the episode ({started}); `date` gives the time. At the
+  limit the episode ends wherever things are.
+- **Ending:** call `r.finish(summary)` when you are done, then stop. The episode ends when you stop or at the time
+  limit. Nobody answers questions during the episode, and no success signal comes back.
+
+{manual}

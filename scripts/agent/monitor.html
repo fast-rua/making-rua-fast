@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent monitor</title>
+<style>
+  :root {
+    --bg: #0f1216; --panel: #161b22; --panel2: #1c232c; --line: #2a333e; --text: #d6dde6; --dim: #8b98a7;
+    --accent: #4cc3ff; --ok: #3ccf7a; --warn: #f2b33d; --bad: #ff6b5f; --add: #1f3d2a; --del: #4a1f22;
+    --addt: #7ee2a0; --delt: #ff9a91; --think: #a9b4c2; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, sans-serif;
+         height: 100vh; display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--line);
+           background: var(--panel); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  #live { font-size: 12px; color: var(--dim); }
+  #live.on::before { content: "●"; color: var(--ok); margin-right: 4px; }
+  .grow { flex: 1; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #runs { width: 230px; border-right: 1px solid var(--line); overflow: auto; background: var(--panel); }
+  #runs .run { padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  #runs .run:hover { background: var(--panel2); }
+  #runs .run.sel { background: #13324a; }
+  #runs .tag { font-weight: 600; word-break: break-all; }
+  #runs .sub { color: var(--dim); font-size: 11px; }
+  .badge { display: inline-block; padding: 0 6px; border-radius: 9px; font-size: 11px; border: 1px solid var(--line);
+           color: var(--dim); white-space: nowrap; }
+  .badge.running { color: var(--accent); border-color: var(--accent); }
+  .badge.done { color: var(--dim); }
+  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.bad { color: var(--bad); border-color: var(--bad); }
+  .badge.paused { color: var(--warn); border-color: var(--warn); }
+  #view { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #head { padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 14px; flex-wrap: wrap; }
+  #head .info { flex: 1; min-width: 320px; }
+  #head .instr { color: var(--text); margin: 4px 0 6px; }
+  #head .facts { color: var(--dim); font-size: 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+  #now { margin-top: 6px; font-size: 12px; }
+  #now .prog { font-family: var(--mono); color: var(--accent); }
+  #cams { display: flex; gap: 8px; }
+  #cams figure { margin: 0; text-align: center; color: var(--dim); font-size: 11px; }
+  #cams img { height: 120px; border-radius: 4px; border: 1px solid var(--line); display: block; background: #000; }
+  nav { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  nav button { background: none; border: 0; color: var(--dim); padding: 8px 12px; cursor: pointer; font: inherit;
+               border-bottom: 2px solid transparent; }
+  nav button.sel { color: var(--text); border-bottom-color: var(--accent); }
+  nav .count { color: var(--dim); font-size: 11px; margin-left: 4px; }
+  .tab { flex: 1; min-height: 0; display: none; }
+  .tab.sel { display: flex; }
+  /* agent timeline */
+  #timeline { flex: 1; overflow: auto; padding: 10px 14px 40px; }
+  .ev { margin: 6px 0; padding: 6px 10px; border-left: 3px solid var(--line); background: var(--panel); border-radius: 0 4px 4px 0; }
+  .ev .meta { color: var(--dim); font-size: 11px; margin-bottom: 2px; display: flex; gap: 8px; }
+  .ev.reasoning { border-left-color: #6a5acd; color: var(--think); font-style: italic; background: transparent; }
+  .ev.message { border-left-color: var(--accent); }
+  .ev.command { border-left-color: #5d6b7a; }
+  .ev.command.fail { border-left-color: var(--bad); }
+  .ev.change { border-left-color: var(--ok); }
+  .ev.error { border-left-color: var(--bad); color: var(--delt); }
+  .ev.turn { border: 0; background: none; color: var(--dim); font-size: 11px; padding: 2px 10px; }
+  .ev.operator { border-left-color: var(--warn); background: #2a2310; }
+  #steer { display: none; border-top: 1px solid var(--line); padding: 8px 14px; background: var(--panel); gap: 8px; }
+  #steer.on { display: flex; }
+  #steer textarea { flex: 1; min-height: 38px; max-height: 160px; resize: vertical; background: var(--bg); color: var(--text);
+                    border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; font: inherit; }
+  #steer button { background: var(--accent); color: #04121c; border: 0; border-radius: 4px; padding: 0 14px; font-weight: 600; cursor: pointer; }
+  #steer button:disabled { opacity: .5; cursor: default; }
+  #steer .hint { color: var(--dim); font-size: 11px; align-self: center; max-width: 220px; }
+  .ev.debrief { color: var(--accent); font-weight: 600; text-align: center; }
+  #tab-agent { flex-direction: column; }
+  .ev pre, .viewer pre, .log { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-word;
+                                margin: 4px 0 0; }
+  .cmd { color: #e6edf3; }
+  .out { color: var(--dim); max-height: 260px; overflow: auto; background: #0b0e12; padding: 6px 8px; border-radius: 4px; }
+  .more { color: var(--accent); cursor: pointer; font-size: 11px; }
+  .path { color: var(--accent); cursor: pointer; font-family: var(--mono); }
+  .path:hover { text-decoration: underline; }
+  .text { white-space: pre-wrap; }
+  /* files */
+  #filelist { width: 300px; border-right: 1px solid var(--line); overflow: auto; padding: 6px 0; }
+  .f { padding: 3px 12px; cursor: pointer; font-family: var(--mono); font-size: 12px; display: flex; gap: 6px; }
+  .f:hover { background: var(--panel2); }
+  .f.sel { background: #13324a; }
+  .f .st { width: 14px; text-align: center; font-weight: 700; }
+  .f.added .st { color: var(--ok); } .f.modified .st { color: var(--warn); } .f.deleted .st { color: var(--bad); }
+  .f.unchanged { color: var(--dim); }
+  .f .run { color: var(--accent); font-size: 11px; }
+  .dir { padding: 6px 12px 2px; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .viewer { flex: 1; overflow: auto; padding: 8px 14px 40px; min-width: 0; }
+  .viewer .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; position: sticky; top: 0;
+                 background: var(--bg); padding: 4px 0; }
+  .seg button { background: var(--panel2); border: 1px solid var(--line); color: var(--dim); padding: 2px 10px; cursor: pointer; font: inherit; }
+  .seg button.sel { color: var(--text); border-color: var(--accent); }
+  .code { font-family: var(--mono); font-size: 12px; }
+  .code .ln { display: flex; }
+  .code .no { color: #4b5866; width: 44px; text-align: right; padding-right: 10px; user-select: none; flex: none; }
+  .code .tx { white-space: pre-wrap; word-break: break-word; flex: 1; }
+  .code .ln.hit { background: #2b2610; }
+  .diff .ln.add { background: var(--add); } .diff .ln.add .tx { color: var(--addt); }
+  .diff .ln.del { background: var(--del); } .diff .ln.del .tx { color: var(--delt); }
+  .diff .ln.hunk .tx { color: var(--accent); }
+  /* programs */
+  #proglist { width: 360px; border-right: 1px solid var(--line); overflow: auto; }
+  .p { padding: 7px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .p:hover { background: var(--panel2); } .p.sel { background: #13324a; }
+  .p .file { font-family: var(--mono); }
+  .p .sub { color: var(--dim); font-size: 11px; }
+  .log { background: #0b0e12; padding: 8px; border-radius: 4px; max-height: 45vh; overflow: auto; color: var(--text); }
+  .versions span { margin-right: 8px; }
+  .pauses img { height: 110px; margin: 4px 4px 0 0; border: 1px solid var(--line); border-radius: 3px; }
+  #tab-views { overflow: auto; }
+  #viewgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; padding: 12px; }
+  #viewgrid figure { margin: 0; }
+  #viewgrid img { width: 100%; border: 1px solid var(--line); border-radius: 4px; cursor: zoom-in; background: #0b0e12; }
+  #viewgrid figcaption { font-size: 12px; color: var(--dim); margin-bottom: 3px; }
+  #viewgrid figcaption b { color: var(--text); font-family: ui-monospace, monospace; }
+  .empty { color: var(--dim); padding: 20px; }
+  h3 { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: .05em; margin: 14px 0 4px; }
+  @media (max-width: 800px) { #runs { width: 150px; } #filelist { width: 180px; } #proglist { width: 200px; } #cams img { height: 70px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent monitor</h1>
+  <span id="dir" class="sub" style="color:var(--dim);font-size:12px"></span>
+  <span class="grow"></span>
+  <label style="font-size:12px;color:var(--dim)"><input type="checkbox" id="follow" checked> follow the stream</label>
+  <span id="live">connecting…</span>
+</header>
+<main>
+  <aside id="runs"></aside>
+  <section id="view">
+    <div id="head"><div class="empty">Pick a run on the left.</div></div>
+    <nav>
+      <button data-tab="agent" class="sel">Agent<span class="count" id="n-agent"></span></button>
+      <button data-tab="files">Files<span class="count" id="n-files"></span></button>
+      <button data-tab="programs">Programs<span class="count" id="n-progs"></span></button>
+      <button data-tab="views">Views<span class="count" id="n-views"></span></button>
+    </nav>
+    <div class="tab sel" id="tab-agent"><div id="timeline"></div>
+      <div id="steer"><textarea id="steer-text" placeholder="Steer the agent: it reads this at its next step (Ctrl+Enter sends)"></textarea>
+        <button id="steer-send">Send</button><span class="hint" id="steer-hint"></span></div></div>
+    <div class="tab" id="tab-files"><div id="filelist"></div><div class="viewer" id="fileview"><div class="empty">Pick a file.</div></div></div>
+    <div class="tab" id="tab-programs"><div id="proglist"></div><div class="viewer" id="progview"><div class="empty">Pick a program run.</div></div></div>
+    <div class="tab" id="tab-views"><div id="viewgrid"><div class="empty">No program has shown an image yet (robot.viz.show).</div></div></div>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+const api = async (path, params = {}) => {
+  const q = new URLSearchParams(params).toString();
+  const r = await fetch(path + (q ? "?" + q : ""), { cache: "no-store" });
+  return r.json();
+};
+const fmtT = (t) => t ? new Date(t * 1000).toLocaleTimeString() : "";
+const dur = (s) => s == null ? "" : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+
+const S = { tag: null, tab: "agent", offset: 0, items: new Map(), order: [], nEvents: 0, files: null,
+            file: null, fileMode: "diff", prog: null, running: new Set(), summary: null };
+
+// ------------------------------------------------------------------------- runs
+async function loadRuns() {
+  try {
+    const d = await api("/api/runs");
+    $("#live").className = "on"; $("#live").textContent = "live";
+    $("#dir").textContent = d.dir;
+    const box = $("#runs"); box.textContent = "";
+    for (const r of d.runs) {
+      const div = el("div", "run" + (r.tag === S.tag ? " sel" : ""));
+      div.append(el("div", "tag", r.tag));
+      const sub = el("div", "sub");
+      const st = r.state === "running" ? "running" : r.success === true ? "ok" : r.success === false ? "bad" : "done";
+      sub.append(el("span", "badge " + st, r.state === "running" ? "running" : (r.end_reason || r.state || "?")), " ",
+                 `${r.task || ""} · ${r.agent || ""}`);
+      div.append(sub, el("div", "sub", (r.started_utc || "").replace("T", " ").slice(0, 19) + " UTC"));
+      div.onclick = () => select(r.tag);
+      box.append(div);
+    }
+    if (!S.tag && d.runs.length) select((d.runs.find((r) => r.state === "running") || d.runs[0]).tag);
+  } catch (e) { $("#live").className = ""; $("#live").textContent = "monitor not reachable"; }
+}
+
+function select(tag) {
+  if (tag === S.tag) return;
+  Object.assign(S, { tag, offset: 0, items: new Map(), order: [], nEvents: 0, files: null, file: null, prog: null, sawPrompt: false });
+  $("#timeline").textContent = ""; $("#filelist").textContent = ""; $("#proglist").textContent = "";
+  $("#fileview").innerHTML = '<div class="empty">Pick a file.</div>'; $("#progview").innerHTML = '<div class="empty">Pick a program run.</div>';
+  loadRuns(); tick(true);
+}
+
+// ------------------------------------------------------------------------- the run's header
+function renderHead(s) {
+  const h = $("#head"); h.textContent = "";
+  const info = el("div", "info");
+  const title = el("div");
+  const st = s.state === "running" ? "running" : (s.check && s.check.success) ? "ok" : (s.check && s.check.success === false) ? "bad" : "done";
+  title.append(el("b", null, S.tag), " ", el("span", "badge " + st, s.state === "running" ? "running" : (s.end_reason || s.state || "")));
+  if (s.check) title.append(" ", el("span", "badge " + (s.check.success ? "ok" : "bad"),
+      `check: ${s.check.success ? "pass" : "fail"}${s.check.coverage != null ? " · coverage " + s.check.coverage : ""}`));
+  info.append(title, el("div", "instr", s.instruction || ""));
+  const facts = el("div", "facts");
+  const start = s.agent_started_utc ? Date.parse(s.agent_started_utc) / 1000 : null;
+  const elapsed = s.agent_wall_s != null ? s.agent_wall_s : start ? Date.now() / 1000 - start : null;
+  const u = s.codex_usage || {};
+  facts.append(el("span", null, `${s.codex && s.codex.model || ""} ${s.codex && s.codex.reasoning_effort || ""}`),
+               el("span", null, `elapsed ${dur(elapsed)}${s.limits ? " of " + dur(s.limits.wall_s) : ""}`),
+               el("span", null, `turns ${s.codex_turns ?? "–"}`),
+               el("span", null, `tokens in ${u.input_tokens ?? "–"} (cached ${u.cached_input_tokens ?? "–"}) · out ${u.output_tokens ?? "–"}`));
+  if (s.finished) facts.append(el("span", null, `finished: ${s.finished.summary || ""}`));
+  for (const v of s.videos || []) {
+    const a = el("a", "path", `▶ ${v.path} (${(v.bytes / 1e6).toFixed(1)} MB)`);
+    a.href = `/api/raw?tag=${encodeURIComponent(S.tag)}&path=${encodeURIComponent(v.path)}`; a.target = "_blank";
+    facts.append(a);
+  }
+  info.append(facts);
+  const now = el("div"); now.id = "now";
+  const run = (s.running || []);
+  S.running = new Set(run.map((p) => p.rel));
+  if (run.length) {
+    for (const p of run) {
+      const line = el("div");
+      line.append(el("span", "badge " + (p.state === "paused" ? "paused" : "running"), p.state), " ",
+                  el("span", "prog", p.rel), ` step ${p.step ?? "–"}`, p.line ? ` · line ${p.line} (${p.function || ""})` : "",
+                  p.message ? ` · ${p.message}` : "");
+      line.style.cursor = "pointer"; line.onclick = () => { showTab("programs"); openProgram(p.id); };
+      now.append(line);
+    }
+  } else now.append(el("span", "sub", s.state === "running" ? "no program running (the agent is thinking or running a command)" : ""));
+  info.append(now);
+  for (const n of (s.notes || []).slice(-3)) info.append(el("div", "sub", "note: " + n));
+  h.append(info);
+  const cams = el("div"); cams.id = "cams";
+  for (const w of s.witness || []) {
+    const fig = el("figure"); const img = el("img");
+    img.src = `/api/raw?tag=${encodeURIComponent(S.tag)}&path=${encodeURIComponent(w.path)}`;
+    fig.append(img, el("figcaption", null, `${w.camera} ${w.t.replace(/(\d\d)(\d\d)(\d\d)/, "$1:$2:$3")}`));
+    cams.append(fig);
+  }
+  h.append(cams);
+  $("#n-progs").textContent = (s.programs || []).length || "";
+  $("#steer").classList.toggle("on", !!s.steerable);
+  const db = s.debrief || {};
+  $("#steer-text").placeholder = db.live && s.state !== "running"
+    ? `Debrief ${db.session}: talk with the agent about the episode (the robot is not connected; Ctrl+Enter sends)`
+    : "Steer the agent: it reads this at its next step (Ctrl+Enter sends)";
+}
+
+async function sendSteer() {
+  const box = $("#steer-text"), text = box.value.trim();
+  if (!text || !S.tag) return;
+  $("#steer-send").disabled = true;
+  try {
+    const r = await fetch("/api/steer", { method: "POST", headers: { "Content-Type": "application/json", "X-Monitor": "1" },
+                                          body: JSON.stringify({ tag: S.tag, text }) });
+    const j = await r.json();
+    if (j.ok) { box.value = ""; $("#steer-hint").textContent = "sent: it appears in the stream once delivered"; }
+    else $("#steer-hint").textContent = "not sent: " + (j.error || r.status);
+  } catch (e) { $("#steer-hint").textContent = "not sent: the monitor did not answer"; }
+  $("#steer-send").disabled = false;
+}
+$("#steer-send").onclick = sendSteer;
+$("#steer-text").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendSteer(); } });
+
+// ------------------------------------------------------------------------- the agent's stream
+function itemKey(ev, it) { return it.id || `${ev.type}-${S.nEvents}`; }
+function onEvent(ev) {
+  S.nEvents += 1;
+  if (ev.type && ev.type.startsWith("item.") && ev.item) {
+    const k = itemKey(ev, ev.item);
+    const had = S.items.get(k);
+    S.items.set(k, { ...(had || {}), ...ev.item, _done: ev.type === "item.completed", _t: had ? had._t : Date.now() });
+    if (!had) S.order.push(k);
+    return k;
+  }
+  const k = `${ev.type}-${S.nEvents}`;
+  S.items.set(k, { type: ev.type, _ev: ev, _t: Date.now(), _done: true }); S.order.push(k);
+  return k;
+}
+
+function renderItem(k) {
+  const it = S.items.get(k);
+  let div = document.getElementById("ev-" + k);
+  const fresh = !div;
+  if (fresh) { div = el("div"); div.id = "ev-" + k; }
+  div.textContent = "";
+  const t = it.type;
+  const meta = (label) => { const m = el("div", "meta"); m.append(el("span", null, label)); if (it.where) m.append(el("span", null, it.where)); return m; };
+  if (t === "reasoning") {
+    div.className = "ev reasoning"; div.append(meta("thinking"), el("div", "text", it.text || it.summary || ""));
+  } else if (t === "agent_message") {
+    div.className = "ev message"; div.append(meta("message"), el("div", "text", it.text || ""));
+  } else if (t === "command_execution") {
+    const failed = it.exit_code != null && it.exit_code !== 0;
+    div.className = "ev command" + (failed ? " fail" : "");
+    div.append(meta(it._done ? `command · exit ${it.exit_code ?? "?"}` : "command · running…"));
+    div.append(el("pre", "cmd", "$ " + (it.command || "")));
+    const out = (it.aggregated_output || "");
+    if (out) {
+      const lines = out.split("\n");
+      const pre = el("pre", "out", lines.length > 40 ? lines.slice(0, 40).join("\n") : out);
+      div.append(pre);
+      if (lines.length > 40) {
+        const more = el("div", "more", `show all ${lines.length} lines`);
+        more.onclick = () => { pre.textContent = out; more.remove(); };
+        div.append(more);
+      }
+    }
+  } else if (t === "file_change") {
+    div.className = "ev change"; div.append(meta("file change"));
+    for (const c of it.changes || []) {
+      const row = el("div"); const p = el("span", "path", c.path);
+      p.onclick = () => { showTab("files"); openFile(relWs(c.path)); };
+      row.append(el("span", "badge", c.kind || "edit"), " ", p); div.append(row);
+    }
+  } else if (t === "user_message") {
+    const first = !S.sawPrompt; S.sawPrompt = true;
+    const prog = (it.text || "").startsWith("[program]"), oper = (it.text || "").startsWith("[operator]");
+    div.className = prog || oper ? "ev turn" : "ev operator";
+    div.append(meta(first ? "prompt" : prog ? "program → agent" : oper ? "cell → agent" : "you → agent"),
+               el("div", "text", it.text || ""));
+  } else if (t === "operator.message") {
+    const e = it._ev || {};
+    div.className = "ev turn"; div.textContent = `your message was delivered (${e.delivered_as || "?"})`;
+  } else if (t === "program.message") {
+    const e = it._ev || {};
+    div.className = "ev turn"; div.textContent = `program event delivered (${e.delivered_as || "?"})`;
+  } else if (t === "debrief.started" || t === "debrief.ended") {
+    const e = it._ev || {};
+    div.className = "ev turn debrief";
+    div.textContent = t === "debrief.started"
+      ? `── debrief ${e.session}: the episode is over; the agent ${e.fork ? "goes on from its episode" : "continues the last debrief"}, and the robot is not connected ──`
+      : `── debrief ${e.session} ended ──`;
+  } else if (t === "context_compaction") {
+    div.className = "ev turn"; div.textContent = "⟲ context compacted";
+  } else if (t === "todo_list") {
+    div.className = "ev message"; div.append(meta("plan"));
+    for (const x of it.items || []) div.append(el("div", null, `${x.completed ? "☑" : "☐"} ${x.text}`));
+  } else if (t === "error" || t === "turn.failed") {
+    div.className = "ev error"; const e = it._ev || it;
+    div.append(meta("error"), el("div", "text", (e.error && (e.error.message || JSON.stringify(e.error))) || e.message || JSON.stringify(e)));
+  } else if (t === "turn.completed") {
+    const u = (it._ev && it._ev.usage) || {};
+    div.className = "ev turn"; div.textContent = `turn done · in ${u.input_tokens ?? "?"} (cached ${u.cached_input_tokens ?? "?"}) · out ${u.output_tokens ?? "?"}`;
+  } else if (t === "turn.started" || t === "thread.started") {
+    div.className = "ev turn"; div.textContent = t === "thread.started" ? "session started" : "turn started";
+  } else {
+    div.className = "ev"; div.append(meta(t || "event"), el("pre", "out", JSON.stringify(it._ev || it, null, 1).slice(0, 3000)));
+  }
+  return { div, fresh };
+}
+
+function relWs(p) { return p.startsWith("/workspace/") ? p.slice(11) : p.replace(/^\.\//, ""); }
+
+async function pollEvents() {
+  for (let guard = 0; guard < 20; guard++) {
+    const d = await api("/api/events", { tag: S.tag, since: S.offset });
+    if (S.tag === null) return;
+    S.offset = d.offset;
+    const tl = $("#timeline");
+    const atBottom = tl.scrollHeight - tl.scrollTop - tl.clientHeight < 80;
+    const touched = new Set();
+    for (const ev of d.events) touched.add(onEvent(ev));
+    for (const k of touched) { const { div, fresh } = renderItem(k); if (fresh) tl.append(div); }
+    $("#n-agent").textContent = S.order.length || "";
+    if (touched.size && $("#follow").checked && atBottom) tl.scrollTop = tl.scrollHeight;
+    if (!d.more) break;
+  }
+}
+
+// ------------------------------------------------------------------------- files
+async function loadFiles() {
+  const d = await api("/api/files", { tag: S.tag });
+  S.files = d;
+  const box = $("#filelist"); const keep = box.scrollTop; box.textContent = "";
+  const changed = d.files.filter((f) => f.status !== "unchanged");
+  $("#n-files").textContent = changed.length ? `${changed.length} changed` : "";
+  let lastDir = null;
+  const order = [...d.files].sort((a, b) => a.path.localeCompare(b.path));
+  for (const f of order) {
+    const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
+    if (dir !== lastDir) { if (dir) box.append(el("div", "dir", dir + "/")); lastDir = dir; }
+    const row = el("div", "f " + f.status + (S.file === f.path ? " sel" : ""));
+    row.append(el("span", "st", { added: "A", modified: "M", deleted: "D", unchanged: "" }[f.status]),
+               el("span", null, dir ? f.path.slice(dir.length + 1) : f.path));
+    if (S.running.has(f.path)) row.append(el("span", "run", "▶ running"));
+    row.title = `${f.status} · ${f.size} bytes${f.mtime ? " · " + fmtT(f.mtime) : ""}`;
+    row.onclick = () => openFile(f.path);
+    box.append(row);
+  }
+  if (d.commits && d.commits.length > 1) {
+    box.append(el("div", "dir", "commits"));
+    for (const c of d.commits) box.append(el("div", "f unchanged", `${c.sha} ${c.subject}`));
+  }
+  box.scrollTop = keep;
+}
+
+async function openFile(path, quiet) {
+  S.file = path;
+  const d = await api("/api/file", { tag: S.tag, path });
+  const v = $("#fileview"); const keep = quiet ? v.scrollTop : 0; v.textContent = "";
+  const bar = el("div", "bar");
+  bar.append(el("b", null, path), el("span", "badge " + ({ added: "ok", modified: "paused", deleted: "bad" }[d.status] || ""), d.status));
+  if (S.running.has(path)) bar.append(el("span", "badge running", "running now"));
+  const seg = el("span", "seg");
+  for (const m of ["diff", "file"]) {
+    const b = el("button", S.fileMode === m ? "sel" : "", m === "diff" ? "diff vs. start" : "file");
+    b.onclick = () => { S.fileMode = m; openFile(path); }; seg.append(b);
+  }
+  bar.append(el("span", "grow"), seg, el("span", "sub", d.mtime ? "saved " + fmtT(d.mtime) : ""));
+  v.append(bar);
+  if (d.binary) { v.append(el("div", "empty", "binary file")); return; }
+  const mode = S.fileMode === "diff" && d.diff ? "diff" : "file";
+  if (mode === "diff") v.append(renderDiff(d.diff));
+  else {
+    const hit = (S.summary && (S.summary.running || []).find((p) => p.rel === path) || {}).line;
+    v.append(renderCode(d.text || "", hit));
+    if (S.fileMode === "diff" && !d.diff) v.append(el("div", "sub", "unchanged since the episode started"));
+  }
+  if (d.truncated) v.append(el("div", "sub", "truncated"));
+  v.scrollTop = keep;
+  document.querySelectorAll("#filelist .f").forEach((r) => r.classList.toggle("sel", r.textContent.startsWith(path.split("/").pop())));
+}
+
+function renderCode(text, hit) {
+  const box = el("div", "code");
+  text.split("\n").forEach((line, i) => {
+    const ln = el("div", "ln" + (hit === i + 1 ? " hit" : ""));
+    ln.append(el("span", "no", String(i + 1)), el("span", "tx", line || " "));
+    box.append(ln);
+  });
+  return box;
+}
+
+function renderDiff(diff) {
+  const box = el("div", "code diff");
+  for (const line of diff.split("\n")) {
+    const c = line.startsWith("@@") ? "hunk" : line.startsWith("+++") || line.startsWith("---") ? "hunk"
+            : line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : "";
+    const ln = el("div", "ln " + c); ln.append(el("span", "tx", line || " ")); box.append(ln);
+  }
+  return box;
+}
+
+// ------------------------------------------------------------------------- programs
+function renderPrograms(progs) {
+  const box = $("#proglist"); const keep = box.scrollTop; box.textContent = "";
+  for (const p of [...progs].reverse()) {
+    const div = el("div", "p" + (S.prog === p.id ? " sel" : ""));
+    const st = p.state === "running" ? "running" : p.state === "paused" ? "paused" : p.exit_code === 0 ? "ok" : (p.exit_code != null || p.signal) ? "bad" : "done";
+    div.append(el("span", "badge " + st, p.state + (p.exit_code != null ? ` (${p.exit_code})` : "")), " ", el("span", "file", p.rel));
+    const end = p.end || (p.state === "running" || p.state === "paused" ? Date.now() / 1000 : null);
+    div.append(el("div", "sub", `${fmtT(p.start)} · ${dur(p.start && end ? end - p.start : null)} · step ${p.step ?? "–"}${p.message ? " · " + p.message : ""}`));
+    div.onclick = () => openProgram(p.id);
+    box.append(div);
+  }
+  box.scrollTop = keep;
+}
+
+let viewsKey = "";
+async function loadViews() {
+  const d = await api("/api/views", { tag: S.tag });
+  $("#n-views").textContent = d.total ? " " + d.total : "";
+  const key = d.views.map((v) => v.path).join("|");
+  if (key === viewsKey) return;
+  viewsKey = key;
+  const g = $("#viewgrid"); g.textContent = "";
+  if (!d.views.length) { g.append(el("div", "empty", "No program has shown an image yet (robot.viz.show).")); return; }
+  for (const v of d.views) {
+    const f = el("figure"), cap = el("figcaption");
+    cap.append(el("b", null, v.name), document.createTextNode(`  ${new Date(v.t * 1000).toLocaleTimeString()}` + (v.run ? `  · run ${v.run}` : "  · outside the runner")));
+    const img = el("img"); img.loading = "lazy";
+    img.src = `/api/raw?tag=${encodeURIComponent(S.tag)}&path=${encodeURIComponent(v.path)}`;
+    img.onclick = () => window.open(img.src, "_blank");
+    f.append(cap, img); g.append(f);
+  }
+}
+
+async function openProgram(id, quiet) {
+  S.prog = id;
+  const d = await api("/api/program", { tag: S.tag, id });
+  const v = $("#progview"); const keep = quiet ? [v.scrollTop, (v.querySelector(".log") || {}).scrollTop] : null; v.textContent = "";
+  const st = d.status || {};
+  const bar = el("div", "bar");
+  bar.append(el("b", null, (st.task || "").replace("/workspace/", "")), el("span", "badge", st.state || ""),
+             el("span", "sub", `step ${st.step ?? "–"}${st.line ? " · line " + st.line : ""}${st.kind ? " · " + st.kind : ""}${st.message ? " · " + st.message : ""}`));
+  v.append(bar);
+  v.append(el("h3", null, "output"));
+  const log = el("pre", "log", d.log || "(nothing yet)"); v.append(log);
+  if (d.versions && d.versions.length) {
+    v.append(el("h3", null, "the code it ran"));
+    const vs = el("div", "versions");
+    d.versions.forEach((x, i) => {
+      for (const [file, sha] of Object.entries(x.files || {})) {
+        const a = el("span", "path", `${fmtT(x.wall)} ${x.event} · ${file}`);
+        a.onclick = async () => {
+          const t = await api("/api/version", { tag: S.tag, id, sha });
+          const old = v.querySelector(".code"); if (old) old.remove();
+          v.append(renderCode(t.text || ""));
+        };
+        vs.append(a, el("br"));
+      }
+    });
+    v.append(vs);
+  }
+  if ((d.views || []).length) {                 // images the program showed (robot.viz.show)
+    v.append(el("h3", null, `views (${d.views.length})`));
+    const row = el("div", "pauses");
+    for (const im of d.views) { const img = el("img"); img.src = `/api/raw?tag=${encodeURIComponent(S.tag)}&path=${encodeURIComponent(im)}`; img.title = im.split("/").pop(); img.onclick = () => window.open(img.src, "_blank"); row.append(img); }
+    v.append(row);
+  }
+  for (const p of d.pauses || []) {
+    v.append(el("h3", null, p.dir));
+    const row = el("div", "pauses");
+    for (const im of p.images) { const img = el("img"); img.src = `/api/raw?tag=${encodeURIComponent(S.tag)}&path=${encodeURIComponent(im)}`; img.title = im.split("/").pop(); row.append(img); }
+    v.append(row);
+  }
+  if (keep) { v.scrollTop = keep[0]; log.scrollTop = keep[1] || log.scrollHeight; } else log.scrollTop = log.scrollHeight;
+  document.querySelectorAll("#proglist .p").forEach((r, i) => r.classList.remove("sel"));
+}
+
+// ------------------------------------------------------------------------- tabs and the poll loop
+function showTab(t) {
+  S.tab = t;
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("sel", b.dataset.tab === t));
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("sel", x.id === "tab-" + t));
+  tick(true);
+}
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => showTab(b.dataset.tab));
+
+let busy = false, n = 0;
+async function tick(force) {
+  if (!S.tag || busy) return;
+  busy = true;
+  try {
+    const s = await api("/api/summary", { tag: S.tag });
+    S.summary = s; renderHead(s); renderPrograms(s.programs || []);
+    await pollEvents();
+    if (S.tab === "files" && (force || n % 2 === 0)) { await loadFiles(); if (S.file) await openFile(S.file, true); }
+    if (S.tab === "programs" && S.prog && (force || (s.running || []).some((p) => p.id === S.prog))) await openProgram(S.prog, true);
+    if (S.tab === "views" || n % 4 === 0) await loadViews();
+  } catch (e) { $("#live").className = ""; $("#live").textContent = "monitor not reachable"; }
+  busy = false; n++;
+}
+loadRuns();
+setInterval(() => tick(false), 1500);
+setInterval(loadRuns, 5000);
+</script>
+</body>
+</html>

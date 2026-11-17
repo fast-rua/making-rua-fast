@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>robotd dashboard</title>
+<link rel="stylesheet" href="static/style.css">
+<script type="importmap">
+{"imports": {"three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+             "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <span class="brand">robotd</span>
+    <span id="top-robot" class="dim">—</span>
+    <span id="top-backend" class="chip">no driver</span>
+    <span id="top-mode" class="chip">—</span>
+    <span id="top-prog" class="chip prog hidden"></span>
+    <span class="spacer"></span>
+    <span class="kv"><span class="dim">t</span> <b id="top-t">—</b></span>
+    <span class="kv"><span class="dim">loop</span> <b id="top-hz">—</b></span>
+    <span class="kv" title="control-loop tick period over the last 5 s: 99th percentile (the target is 4 ms); amber when a tick took over 20 ms"><span class="dim">tick p99</span> <b id="top-tick">—</b></span>
+    <span class="kv"><span class="dim">poll</span> <b id="top-poll">—</b></span>
+    <span class="kv"><span class="dim">cams</span> <b id="top-cams">—</b></span>
+    <button id="side-toggle" class="chip side-toggle" title="show or hide the side panel (key: \)">side panel</button>
+  </header>
+
+  <main id="view">
+    <div id="three"></div>
+    <div id="view-banner" class="banner hidden"></div>
+    <div id="view-msg" class="view-msg">loading 3D view…</div>
+    <div id="view-tools" class="panel-float">
+      <div class="tool-row">
+        <button data-view="iso">Iso</button><button data-view="front">Front</button>
+        <button data-view="side">Side</button><button data-view="top">Top</button>
+      </div>
+      <label><input type="checkbox" id="show-robot" checked> robot</label>
+      <label><input type="checkbox" id="show-ghost" checked> commanded <span class="swatch ghost"></span></label>
+      <label><input type="checkbox" id="show-force" checked> force on grippers <span class="swatch force"></span></label>
+      <button id="btn-zero" title="take each gripper's force estimate as zero, here and now">zero force</button>
+      <label><input type="checkbox" id="show-cloud" checked> point cloud</label>
+      <div id="cloud-cams"></div>
+      <label class="slider">point size <input type="range" id="point-size" min="1" max="8" value="3"></label>
+      <label><input type="checkbox" id="color-height"> colour by height</label>
+    </div>
+  </main>
+
+  <section id="cams"></section>
+
+  <section id="diag">
+    <div class="arm-card" id="arm-left"></div>
+    <div class="arm-card" id="arm-right"></div>
+    <div class="info-card" id="info"></div>
+  </section>
+
+  <aside id="side">
+    <div id="tabbar"><button class="tab active" data-tab="log">Log</button><button class="tab" data-tab="programs">Programs<span id="prog-dot" class="dot"></span></button><button class="tab" data-tab="views" title="images programs showed with robot.viz (newest first)">Views<span id="views-dot" class="dot"></span></button><span class="spacer"></span><button id="side-wide" class="tab" title="widen this panel (for editing)">⇔</button></div>
+    <div class="pane active" id="pane-log">
+    <div class="log-head">
+      <span>Log</span>
+      <span class="spacer"></span>
+      <label><input type="checkbox" id="log-commands" checked> commands</label>
+      <label><input type="checkbox" id="log-clients" checked> clients</label>
+      <button id="log-clear" title="clear the view (the driver keeps its log)">clear</button>
+    </div>
+    <div id="log-list"></div>
+    <div id="log-follow" class="hidden">new entries below ↓</div>
+    </div>
+    <div class="pane" id="pane-views" data-tab="views">
+      <div class="log-head"><span>Views</span><span class="spacer"></span><span id="views-count" class="dim"></span></div>
+      <div id="views-list" class="views-list"><div class="dim views-empty">No program has shown an image yet (robot.viz.show).</div></div>
+    </div>
+    <div class="pane" id="pane-programs" data-tab="programs">
+      <div class="prog-head">
+        <span id="prog-status" class="dim">no program running</span><span class="spacer"></span>
+        <button id="prog-stop" class="prog-stop" disabled title="Ctrl-C, then SIGTERM, then SIGKILL; the driver stops its motions and the arms hold">■ Stop</button>
+      </div>
+      <div id="prog-list" class="prog-list"></div>
+      <div class="prog-edit">
+        <div class="prog-row">
+          <b id="prog-name">pick a program</b><span id="prog-origin" class="chip hidden"></span><span class="spacer"></span>
+          <input id="prog-args" placeholder="arguments" spellcheck="false">
+          <button id="prog-run" class="prog-run" disabled>▶ Run</button>
+        </div>
+        <textarea id="prog-src" spellcheck="false" placeholder="select a program, or make a new one"></textarea>
+        <div class="prog-row">
+          <button id="prog-save" disabled title="Ctrl/Cmd-S">Save</button>
+          <button id="prog-copy" disabled title="copy this example into your programs to edit it">Copy to mine</button>
+          <button id="prog-del" disabled>Delete</button>
+          <span class="spacer"></span>
+          <input id="prog-new-name" placeholder="new_program.py" spellcheck="false">
+          <button id="prog-new">New</button>
+        </div>
+        <div id="prog-msg" class="prog-msg dim"></div>
+      </div>
+      <div class="prog-row prog-out-head"><span>Output</span><span class="spacer"></span><button id="prog-clear">clear</button></div>
+      <pre id="prog-out" class="prog-out"></pre>
+    </div>
+  </aside>
+  <div id="jtip" class="jtip hidden"></div>
+
+  <footer id="estop">
+    <button id="btn-freeze" class="big freeze" title="Stop everything and hold stiff where the arms are (Space)">
+      <span class="ico">■</span><span><b>FREEZE</b><small>Space · hold stiff</small></span></button>
+    <button id="btn-soft" class="big soft" title="Stop everything: the arms float (no stiffness, damping on gravity compensation), the grippers go limp (S)">
+      <span class="ico">≈</span><span><b>SOFT</b><small>S · float, grippers limp</small></span></button>
+    <button id="btn-park" class="mid park" title="Move both arms slowly to the park pose (click twice)">
+      <span><b>PARK</b><small>click twice</small></span></button>
+    <button id="btn-release" class="mid release" title="Clear the stop: the arms hold stiff, programs may command them again (click twice)">
+      <span><b>RELEASE</b><small>click twice</small></span></button>
+    <button id="btn-off" class="mid off" title="Park the arms slowly, then switch every motor off: robotd exits (click twice). Restart it from its terminal.">
+      <span><b>OFF</b><small>park, motors off</small></span></button>
+    <div id="state-badge" class="badge">—</div>
+    <div id="estop-msg" class="estop-msg">Power switch is the last resort: the arms drop when it is off.</div>
+  </footer>
+</div>
+<script src="static/app.js"></script>
+<script src="static/joints.js"></script>
+<script src="static/programs.js"></script>
+<script type="module" src="static/view3d.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+# scripts/install.sh is the supported install (it pins the versions the demos ran with and puts this checkout on
+# PYTHONPATH); this file is for pytest and for `pip install -e .` into an environment of your own.
+[project]
+name = "robot-cell"
+version = "0.1.0"
+description = "Robot-use agents in real time: a robot API, driver and agent harness for a bimanual YAM cell"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy"]
+
+[project.optional-dependencies]
+driver = ["mujoco>=3.2", "ruckig", "pillow", "opencv-python-headless", "mink", "qpsolvers[quadprog]", "pyyaml",
+          "pydantic", "python-can", "crcmod-plus", "dm-env", "portal", "tyro", "click<8.2.0", "threadpoolctl",
+          "mcap-ros2-support"]
+cell = ["pyrealsense2"]
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["robot", "robotd", "robotd.core", "robotd.backends", "robotd.robots", "robotd.robots.yam_station",
+            "robotd.dashboard", "tasks"]
+
+[tool.setuptools.package-data]
+"robotd.dashboard" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

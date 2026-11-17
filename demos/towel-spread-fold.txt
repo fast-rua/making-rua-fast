@@ -1,0 +1,7 @@
+A blue towel lies on the table between the two arms, partly folded over. Spread it out flat, then fold it once in half, edge to edge. Leave it lying folded on the table, then call r.finish() with a short summary.
+
+General advice (use your judgement):
+- Grasping cloth: bring the open fingers to a place where cloth ends up between them just by moving toward it, then close. On a raised edge or fold, come down from above with the fingers across it; on a corner lying flat, scoop: tilt the hand so the lower finger slides in under the cloth. Prefer corners that are easy to reach. Check the point cloud and a ghost of the planned pose first, and the wrist camera after closing (a close on nothing ends near 3 mm wide).
+- Spreading: grab two adjacent corners of one edge and pull back toward you, so the towel drags out flat. Don't swing or throw it.
+- Folding: carry the two corners of one edge over onto the opposite two, lower them there and release. Check the result in the cameras and fix it if it is off.
+- Keep the towel in the middle of the table where both arms reach well, each hand on its own side.
