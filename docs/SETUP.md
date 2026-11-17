@@ -23,7 +23,7 @@ Everything goes into one folder, `$ROBOT_HOME` (default `~/robot-cell`). Nothing
 needs sudo; removing it means deleting the folder.
 
 ```bash
-git clone https://github.com/shaoxiongduan/making-rua-fast.git && cd making-rua-fast
+git clone https://github.com/fast-rua/making-rua-fast.git && cd making-rua-fast
 bash scripts/install.sh            # simulator + robot API + Codex
 bash scripts/install.sh --cell     # on the cell's computer: + the RealSense driver
 source ~/robot-cell/env.sh         # in every shell you use

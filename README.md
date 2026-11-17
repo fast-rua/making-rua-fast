@@ -28,7 +28,7 @@ You need Linux, `git` and [uv](https://docs.astral.sh/uv/). Everything installs 
 `$ROBOT_HOME` (default `~/robot-cell`), with no sudo:
 
 ```bash
-git clone https://github.com/shaoxiongduan/making-rua-fast.git && cd making-rua-fast
+git clone https://github.com/fast-rua/making-rua-fast.git && cd making-rua-fast
 bash scripts/install.sh
 source ~/robot-cell/env.sh
 python -m pytest -q                       # a few minutes, no hardware
